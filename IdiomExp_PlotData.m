@@ -21,15 +21,15 @@ AOI(4,:)=[-box_sz*.25 -box_sz*.25 box_sz box_sz];
 %AOI(4,:)=[0 0 box_sz box_sz];
 
 %load the master subject list
-subject_summary=readtable('AllSubjectSummary.txt','Delimiter','\t');
+subject_summary=readtable('AllSubjectSummary_EDIT.txt','Delimiter','\t');
 %subject_summary=readtable('table idioms2.xlsx');
 inclusionList;
 
-datadir='\data\';
+datadir='C:\Users\bsun\Documents\GitHub\idioms-data\data\';
 outputdir='\output\';
 
 %read in the data directories and sort
-filedirArray=dir([pwd datadir]);
+filedirArray=dir(datadir);
 idx=1;
 for zz=1:length(filedirArray)
     %matlab insists on reading in hiddne directories, ignore them
@@ -40,24 +40,25 @@ for zz=1:length(filedirArray)
     end
 end
 
-fileDirList=sort(fileDirList);
-
+%fileDirList=sort(fileDirList);
+fileDirList=unique(subject_summary.SubjectID);
 
 AllSub_Details=zeros(length(fileDirList),2)-1;
-AllSub_ave_AOI_per_idiom=zeros(8,10001,4,length(fileDirList)) -1;
+AllSub_ave_AOI_per_idiom=zeros(4,10001,4,length(fileDirList)) -1; % change 1st Dimension from 4 to 8 if using text & audio
 
-for j=2:length(fileDirList) %per subject
+for j=1:length(fileDirList) %per subject
     n=0;
     fdir= num2str(fileDirList(j));
     
     sub_rng=find(subject_summary.SubjectID==str2num(fdir));
     
-    filelistArray=dir([pwd datadir fdir '\*.csv']);
+    filelistArray=dir([ datadir fdir '\*.csv']);
     [~,idx] = sort([filelistArray.datenum]);
     for zz= 1:length(idx)
         filelistCSV{zz}=filelistArray(idx(zz)).name;
     end
     
+    %keyboard
     %load mouse data from both blocks and combine together
     LoadMouseData;
     
@@ -120,12 +121,12 @@ for j=2:length(fileDirList) %per subject
         mouse(trial).AOI_StimulusList=mouse_AOI_StimulusList;
         
         %remove last header column is empty (why?)
-        fid = fopen([pwd datadir fdir  '\' fn], 'r');
+        fid = fopen([ datadir fdir  '\' fn], 'r');
         str = fgetl(fid);
         fclose(fid);
         vars = regexp(str, '\t', 'split');
         vars = vars(1:end-1);
-        eyedat=readtable([pwd datadir fdir  '\' fn] ,'ReadVariableNames',false,'HeaderLines',1,'Delimiter','\t');
+        eyedat=readtable([ datadir fdir  '\' fn] ,'ReadVariableNames',false,'HeaderLines',1,'Delimiter','\t');
         validVars = matlab.lang.makeValidName(vars);
         eyedat.Properties.VariableNames = validVars;
         
@@ -356,14 +357,14 @@ for j=2:length(fileDirList) %per subject
         
         %take one subjects data and average over the 4 idiom types
         ave_AOI_per_idiom=[]; cntr=0;
-        for kk=0:1
+        %for kk=0:1 %for now do not use text vs. audio
             for zz=0:3
                 %for each type of idiom
                 idx1=sub_details(:,4)==zz;
                 %also was it text or audio?
-                idx2=sub_details(:,3)==kk;
+                %idx2=sub_details(:,3)==kk; %for now do not use text vs. audio
                 
-                idx=find(idx1&idx2);
+                idx=find(idx1); %find(idx1&idx2); %for now do not use text vs. audio
                 cntr=cntr+1;
                 for ll=1:4 %types of pictures
                     
@@ -386,8 +387,8 @@ for j=2:length(fileDirList) %per subject
                         ave_AOI_per_idiom(cntr,:,ll)=zeros(1,10001);
                     end
                 end
+            %end %for now do not use text vs. audio
             end
-        end
         
         if(visualize)
             plot(ave_AOI_per_idiom(:,:,3)')
@@ -412,7 +413,7 @@ for j=2:length(fileDirList) %per subject
     
     
 end
-keyboard
+
 % figure(101); clf;
 % subplot(2,1,1)
 % plot( mean(AllSub_ave_AOI_per_idiom(1:4,:,:),3)' )
@@ -440,9 +441,15 @@ sub(3).list=find(AllSub_Details(:,1)==1 & AllSub_Details(:,2)==0);
 %old_asd=
 sub(4).list=find(AllSub_Details(:,1)==1 & AllSub_Details(:,2)==1);
 
-ttl={'Cultural-Audio', 'Instructive-Audio', 'Biological-Audio', ...
-    'Novel Metaphor-Audio', 'Cultural-Text', 'Instructive-Text', ...
-    'Biological-Text', 'Novel Metaphor-Text'};
+[length(sub(1).list) length(sub(2).list) length(sub(3).list) length(sub(4).list)]
+
+%use for text v audio
+%ttl={'Cultural-Audio', 'Instructive-Audio', 'Biological-Audio', ...
+%    'Novel Metaphor-Audio', 'Cultural-Text', 'Instructive-Text', ...
+%    'Biological-Text', 'Novel Metaphor-Text'};
+
+ttl={'Cultural', 'Instructive', 'Biological', ...
+    'Novel Metaphor'};
 
 picName={'A-Target'; 'B '; 'C '; 'D '};
 c=50;
