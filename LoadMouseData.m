@@ -1,4 +1,4 @@
-filelistArray=dir([pwd datadir fdir '\*.mt']);
+filelistArray=dir([datadir fdir '\*.mt']);
 [~,idx] = sort([filelistArray.datenum]);
 
 for zz= 1:length(idx)
@@ -7,12 +7,12 @@ for zz= 1:length(idx)
         [subjID_1,stim_1, order_1,condition_1,resp_1_1, resp_2_1, resp_3_1,...
             resp_4_1, response_1,error_1,resp_num_1, RT_1, init_time_1,...
             distractor_1, ideal_y_int_1, maxdev_1, real_time_1, comments_1,...
-            timestamps_1,mouse1 ]=ReadMouseTrackerData([pwd datadir fdir '\' filelistMT{zz}]);
+            timestamps_1,mouse1 ]=ReadMouseTrackerData([datadir fdir '\' filelistMT{zz}]);
     elseif(zz==2)
         [subjID_2,stim_2, order_2,condition_2,resp_1_2, resp_2_2, resp_3_2,...
             resp_4_2, response_2,error_2,resp_num_2, RT_2, init_time_2,...
             distractor_2, ideal_y_int_2, maxdev_2, real_time_2, comments_2,...
-            timestamps_2,mouse2 ]=ReadMouseTrackerData([pwd datadir fdir  '\' filelistMT{zz}]);
+            timestamps_2,mouse2 ]=ReadMouseTrackerData([datadir fdir  '\' filelistMT{zz}]);
     end
 end
 

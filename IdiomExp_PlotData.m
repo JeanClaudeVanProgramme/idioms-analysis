@@ -6,6 +6,9 @@ smp_rate=1/120;
 trialColorCode='rgkm';
 errorType=0;
 
+AOI_Hit_Threshold=0.4; %above what proportion of data must have an AOI hit?
+tloss_threshold=0.7; % above what percent will we accept track losses
+
 %define AOIS
 box_sz=256*2; %border in & outside of screen
 %rectangle uses bottom left + width & height
@@ -21,9 +24,9 @@ AOI(4,:)=[-box_sz*.25 -box_sz*.25 box_sz box_sz];
 %AOI(4,:)=[0 0 box_sz box_sz];
 
 %load the master subject list
-subject_summary=readtable('AllSubjectSummary_EDIT.txt','Delimiter','\t');
-%subject_summary=readtable('table idioms2.xlsx');
-inclusionList;
+%subject_summary=readtable('AllSubjectSummary.txt','Delimiter','\t');
+subject_summary=readtable('table idioms_3.xlsx');
+%inclusionList;
 
 datadir='C:\Users\bsun\Documents\GitHub\idioms-data\data\';
 outputdir='\output\';
@@ -44,9 +47,9 @@ end
 fileDirList=unique(subject_summary.SubjectID);
 
 AllSub_Details=zeros(length(fileDirList),2)-1;
-AllSub_ave_AOI_per_idiom=zeros(4,10001,4,length(fileDirList)) -1; % change 1st Dimension from 4 to 8 if using text & audio
+AllSub_ave_AOI_per_idiom=zeros(4,10001,4,length(fileDirList)) +nan; % change 1st Dimension from 4 to 8 if using text & audio
 
-for j=1:length(fileDirList) %per subject
+for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - skip
     n=0;
     fdir= num2str(fileDirList(j));
     
@@ -58,29 +61,40 @@ for j=1:length(fileDirList) %per subject
         filelistCSV{zz}=filelistArray(idx(zz)).name;
     end
     
-    %keyboard
     %load mouse data from both blocks and combine together
     LoadMouseData;
     
     %open 2 files one for results the other for possible errors
     startDatafile;
     
-    %load list of unreliable stimuli
-    exclude_trial_list=ExclusionTrialEval(resp_1);
-    
+    %load list of unreliable stimuli --  is this still valid list?  
+    %exclude_trial_list=ExclusionTrialEval(resp_1);
+
     %evaluate if the trial belongs on inclusion list
-    tmp=subject_summary.Item(sub_rng);
-    for bb=1:length(tmp)
-        keepTrial(bb)=sum(strcmp(tmp(bb), inclusion_list))>0;
+    %instead of using inclusion list from inclusionList.m, use Sobh's excel
+    %list
+    inclusion_list=subject_summary.Item(sub_rng);
+    keepTrial=zeros(length(condition),1);
+
+    for bb=1:length(inclusion_list)
+        tmp=strcmp(condition, inclusion_list(bb))>0;
+        idx=find(tmp);
+        if(isempty(idx))
+           % keyboard
+           disp('Entry in Sobhs list is not in data file!')
+        else
+            keepTrial(idx)=1;
+        end
     end
-    
-    exclude_trial_list=exclude_trial_list | ~keepTrial';
+    % a
+    exclude_trial_list=~keepTrial'; %exclude_trial_list | ~keepTrial'; %exclude list is old
     sub_details=[-1 -1 -1 -1];
+
     
     for trial=1:length(filelistCSV) %eaxch csv trial file
         
         %test if this is a excluded trial
-        if(exclude_trial_list(trial) | RT(trial)>=18000 )
+        if(exclude_trial_list(trial)) % | RT(trial)>=18000 ) RT's should already be screened
             %writeData; for now dont do anything, maybe have some entry for
             %skupped trials later?
             continue; %skip to next trial
@@ -165,6 +179,7 @@ for j=1:length(fileDirList) %per subject
         % [eye_AOI_PositionList, eye_AOI_StimulusList]=...
         [~, eye_AOI_StimulusList]=...
             IsInAOI(eyeBinocXY(:,1),eyeBinocXY(:,2),AOI, AOI_label);
+        
         
         t=(eyedat.EyeTrackerTimestamp(rng)-eyedat.EyeTrackerTimestamp(rng(1)))/1000000;
         
@@ -297,38 +312,51 @@ for j=1:length(fileDirList) %per subject
         
         
         AOI_hit_perc(trial)=sum(eye_AOI_StimulusList>0)/length(eye_AOI_StimulusList);
-        if(AOI_hit_perc(trial)<.5);
+        %if AOIs aren't looked at trial is probably junk - consider other
+        %ways to filter bad trials
+        if(AOI_hit_perc(trial)<AOI_Hit_Threshold);
             errorType=2;
         end
+        
+        %problem - Validity does not appear to be recorded correctly
+        %contains odd values
+        %tloss(trial)=sum(eyedat.Validity_Left==0)/length(eyedat.Validity_Left);
+        %if( tloss(trial) < tloss_threshold)
+        %    tloss(trial)
+        %    errorType=3;
+        %    keyboard
+        %end 
+        
+       %sum(eyedat.Validity_Right==0)./length(eyedat.Validity_Right)
         
         percent_of_trial_with_trackloss(trial,:)=...
             [RL_eye_X_empty(trial,:) RL_eye_Y_empty(trial,:)]*100;
         
         if(errorType==0)
-            writeData;
+            %writeData;
             
             %put subject detail into numeric code
-            if(strcmp( subject_summary.Group{sub_rng(trial)}, 'control' ))%CN
-                
+            if(strcmp( subject_summary.Group{sub_rng(1)}, 'control' ))%CN
                 sub_type=0;
             else
                 sub_type=1;
             end
             
-            if(strcmp(  subject_summary.Age{sub_rng(trial)}, 'young' ))
+            if(strcmp(  subject_summary.Age{sub_rng(1)}, 'young' ))
                 sub_age=0;
             else %old
                 sub_age=1;
             end
             
-            tmp=subject_summary.Item{sub_rng(trial)};
+            
+            tmp=condition{trial}; %subject_summary.Item{sub_rng(trial)};
             if(strcmp( tmp(1), 'a' )) %a for audio
                 sub_presentType=0;
             else % t for text
                 sub_presentType=1;
             end
             
-            tmp=subject_summary.TargetPos1{sub_rng(trial)};
+            tmp= resp_1{trial}; %subject_summary.TargetPos1{sub_rng(trial)};
             %cul, ins, bio met
             
             if( strcmp( tmp(2), 'c'))
@@ -378,15 +406,15 @@ for j=1:length(fileDirList) %per subject
                         tmp = tmp==ll;
                         %AOI_list(qq,:,ll)=tmp;
                         AOI_list(qq,1:length(tmp),ll)=tmp;
-                        
                     end
                     
                     if(~isempty(idx))
                         ave_AOI_per_idiom(cntr,:,ll)=mean(AOI_list(:,:,ll),1);
                     else
-                        ave_AOI_per_idiom(cntr,:,ll)=zeros(1,10001);
+                        ave_AOI_per_idiom(cntr,:,ll)=zeros(1,10001)+nan;
                     end
                 end
+                
             %end %for now do not use text vs. audio
             end
         
@@ -403,16 +431,17 @@ for j=1:length(fileDirList) %per subject
         AllSub_Details(j,:)=sub_details(1,1:2);
         AllSub_ave_AOI_per_idiom(:,:,:,j)=ave_AOI_per_idiom;
         
-        fclose(fileID);
+        fclose('all');
     end
+
     
     clear subjID RT  error mouse_distance_traveled mouse_num_zero_crossings ...
         mouse_peakVel mouse_num_AOIs_visited AOI_mouse_visits AOI_total_dur ...
         AOI_num_visits AOI_mean_dur exclude_trial_list RL_eye_X_empty ...
         RL_eye_Y_empty filelistCSV AOI_hit_perc percent_of_trial_with_trackloss
     
-    
-end
+
+end %per subject file
 
 % figure(101); clf;
 % subplot(2,1,1)
@@ -441,6 +470,8 @@ sub(3).list=find(AllSub_Details(:,1)==1 & AllSub_Details(:,2)==0);
 %old_asd=
 sub(4).list=find(AllSub_Details(:,1)==1 & AllSub_Details(:,2)==1);
 
+disp('subject types')
+disp('YoungControl OldControl YoungASD OldASD')
 [length(sub(1).list) length(sub(2).list) length(sub(3).list) length(sub(4).list)]
 
 %use for text v audio
@@ -457,15 +488,17 @@ c=50;
 clr='rgcb';
 t=(1:10001)/120;
 cntr=0;
+
+keyboard
+
 for pictureNum=1:4
-    
-    
     for pxp=1:size(AllSub_ave_AOI_per_idiom,1)
         cntr=cntr+1;
         
         figure(151+cntr); clf; hold on
         set(gca,'FontSize',20)
-        
+        %plot first just so legend corresponds as shplot won't give proper
+        %legend
         for szs=1:4
             plot(t, smooth(mean(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),4)',c),...
                 clr(szs),'linewidth',3 )
@@ -473,12 +506,13 @@ for pictureNum=1:4
         legend('Control-Young','Control-Old','ASD-Young','ASD-Old')
         
         for szs=1:4
-            plot(t, smooth(mean(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),4)',c),...
+            plot(t, smooth(nanmean(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),4)',c),...
                 clr(szs),'linewidth',3 )
-            sem=smooth(std(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),[],4)./sqrt(length(sub(szs).list)),c)';
+            sem=smooth(nanstd(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),...
+                [],4)./sqrt(length(sub(szs).list)),c)';
             shplot( t, ...
-                smooth(mean(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),4)',c), ...
-                sem, clr(szs) )
+                smooth(nanmean(AllSub_ave_AOI_per_idiom(pxp,:,pictureNum,sub(szs).list),4)',c), ...
+                sem, clr(szs) );
         end
         
         ylim([0 0.55])
@@ -487,7 +521,7 @@ for pictureNum=1:4
         xlabel('Time (s)')
         
         ylabel('P(Fixate Target)')
-        title([picName(pictureNum) ttl{pxp}])
+        title([picName(pictureNum) ttl{pxp}]);
         saveas(gcf,[picName{pictureNum} ttl{pxp} '.jpg'])
         ax = gca;
     end
