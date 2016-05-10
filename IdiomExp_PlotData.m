@@ -4,10 +4,10 @@ visualize=0;
 xy_res=[1280 1024];
 smp_rate=1/120;
 trialColorCode='rgkm';
-errorType=0;
 
 AOI_Hit_Threshold=0.4; %above what proportion of data must have an AOI hit?
-tloss_threshold=0.7; % above what percent will we accept track losses
+tloss_threshold=0.5; % above what percent will we not accept track losses
+trialLoss_thresh=0.5; %up to what percent of trials will we ok with losing?
 
 %define AOIS
 box_sz=256*2; %border in & outside of screen
@@ -61,27 +61,29 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         filelistCSV{zz}=filelistArray(idx(zz)).name;
     end
     
+    errorType=zeros(length(filelistCSV),1);
+    
     %load mouse data from both blocks and combine together
     LoadMouseData;
     
     %open 2 files one for results the other for possible errors
     startDatafile;
     
-    %load list of unreliable stimuli --  is this still valid list?  
+    %load list of unreliable stimuli --  is this still valid list?
     %exclude_trial_list=ExclusionTrialEval(resp_1);
-
+    
     %evaluate if the trial belongs on inclusion list
     %instead of using inclusion list from inclusionList.m, use Sobh's excel
     %list
     inclusion_list=subject_summary.Item(sub_rng);
     keepTrial=zeros(length(condition),1);
-
+    
     for bb=1:length(inclusion_list)
         tmp=strcmp(condition, inclusion_list(bb))>0;
         idx=find(tmp);
         if(isempty(idx))
-           % keyboard
-           disp('Entry in Sobhs list is not in data file!')
+            % keyboard
+            disp('Entry in Sobhs list is not in data file!')
         else
             keepTrial(idx)=1;
         end
@@ -89,14 +91,15 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
     % a
     exclude_trial_list=~keepTrial'; %exclude_trial_list | ~keepTrial'; %exclude list is old
     sub_details=[-1 -1 -1 -1];
-
     
-    for trial=1:length(filelistCSV) %eaxch csv trial file
+    
+    for trial=1:length(filelistCSV) %each csv trial file
         
         %test if this is a excluded trial
         if(exclude_trial_list(trial)) % | RT(trial)>=18000 ) RT's should already be screened
             %writeData; for now dont do anything, maybe have some entry for
             %skupped trials later?
+            errorType(trial)=5;
             continue; %skip to next trial
         end
         
@@ -150,6 +153,7 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         rng=(size(eyedat,1)-round( (RT(trial)/1000)/smp_rate )):size(eyedat,1);
         if(rng(1)<1) %negative numbers...not sure why this would happen
             fprintf(fileID2, '%s\t%d Trial too short', fn);
+            errorType(trial)=2;
             continue; %skip to next trial
         end
         
@@ -305,7 +309,7 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         
         [mouse_distance_traveled,mouse_num_zero_crossings,...
             mouse_num_AOIs_visited, mouse_peakVel,...
-            mouse_AOIs_visited,errorType]=mouseMetrics(mouse(trial),init_time(trial));
+            mouse_AOIs_visited,errorType(trial)]=mouseMetrics(mouse(trial),init_time(trial));
         
         [AOI_segments,AOI_total_dur,AOI_num_visits, AOI_mean_dur]=...
             eyeMetrics(eye_AOI_StimulusList,smp_rate);
@@ -315,7 +319,7 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         %if AOIs aren't looked at trial is probably junk - consider other
         %ways to filter bad trials
         if(AOI_hit_perc(trial)<AOI_Hit_Threshold);
-            errorType=2;
+            errorType(trial)=2;
         end
         
         %problem - Validity does not appear to be recorded correctly
@@ -325,14 +329,21 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         %    tloss(trial)
         %    errorType=3;
         %    keyboard
-        %end 
+        %end
         
-       %sum(eyedat.Validity_Right==0)./length(eyedat.Validity_Right)
         
+        %instead of validity try using our estimate of tracklosses with
+        %values ==0 or ==-1
         percent_of_trial_with_trackloss(trial,:)=...
-            [RL_eye_X_empty(trial,:) RL_eye_Y_empty(trial,:)]*100;
+            [RL_eye_X_empty(trial,:) RL_eye_Y_empty(trial,:)];
         
-        if(errorType==0)
+        if( max(percent_of_trial_with_trackloss(trial,:)) > tloss_threshold)
+            %percent_of_trial_with_trackloss(trial,:)
+            errorType(trial)=3;
+        end
+        
+        
+        if(errorType(trial)==0)
             %writeData;
             
             %put subject detail into numeric code
@@ -381,42 +392,44 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         end
     end
     
-    if(errorType==0)
+    
+    
+    if(sum( errorType(find(keepTrial))>0  )/sum(keepTrial) < trialLoss_thresh )
         
         %take one subjects data and average over the 4 idiom types
         ave_AOI_per_idiom=[]; cntr=0;
         %for kk=0:1 %for now do not use text vs. audio
-            for zz=0:3
-                %for each type of idiom
-                idx1=sub_details(:,4)==zz;
-                %also was it text or audio?
-                %idx2=sub_details(:,3)==kk; %for now do not use text vs. audio
+        for zz=0:3
+            %for each type of idiom
+            idx1=sub_details(:,4)==zz;
+            %also was it text or audio?
+            %idx2=sub_details(:,3)==kk; %for now do not use text vs. audio
+            
+            idx=find(idx1); %find(idx1&idx2); %for now do not use text vs. audio
+            cntr=cntr+1;
+            for ll=1:4 %types of pictures
                 
-                idx=find(idx1); %find(idx1&idx2); %for now do not use text vs. audio
-                cntr=cntr+1;
-                for ll=1:4 %types of pictures
+                AOI_list=zeros(1,10001);
+                for qq=1:length(idx)
                     
-                    AOI_list=zeros(1,10001);
-                    for qq=1:length(idx)
-                        
-                        %tmp=subAOI(idx(qq)).norm;
-                        tmp=subAOI(idx(qq)).trial;
-                        
-                        %which AOI do we want? A,B,C,D?  A is target
-                        tmp = tmp==ll;
-                        %AOI_list(qq,:,ll)=tmp;
-                        AOI_list(qq,1:length(tmp),ll)=tmp;
-                    end
+                    %tmp=subAOI(idx(qq)).norm;
+                    tmp=subAOI(idx(qq)).trial;
                     
-                    if(~isempty(idx))
-                        ave_AOI_per_idiom(cntr,:,ll)=mean(AOI_list(:,:,ll),1);
-                    else
-                        ave_AOI_per_idiom(cntr,:,ll)=zeros(1,10001)+nan;
-                    end
+                    %which AOI do we want? A,B,C,D?  A is target
+                    tmp = tmp==ll;
+                    %AOI_list(qq,:,ll)=tmp;
+                    AOI_list(qq,1:length(tmp),ll)=tmp;
                 end
                 
-            %end %for now do not use text vs. audio
+                if(~isempty(idx))
+                    ave_AOI_per_idiom(cntr,:,ll)=mean(AOI_list(:,:,ll),1);
+                else
+                    ave_AOI_per_idiom(cntr,:,ll)=zeros(1,10001)+nan;
+                end
             end
+            
+            %end %for now do not use text vs. audio
+        end
         
         if(visualize)
             plot(ave_AOI_per_idiom(:,:,3)')
@@ -433,14 +446,16 @@ for j=1:length(fileDirList) %per subject %first subjbect has weird eye data - sk
         
         fclose('all');
     end
-
     
-    clear subjID RT  error mouse_distance_traveled mouse_num_zero_crossings ...
+    %keyboard
+    %plot(percent_of_trial_with_trackloss,'*')
+    
+    clear errorType subjID RT  error mouse_distance_traveled mouse_num_zero_crossings ...
         mouse_peakVel mouse_num_AOIs_visited AOI_mouse_visits AOI_total_dur ...
         AOI_num_visits AOI_mean_dur exclude_trial_list RL_eye_X_empty ...
         RL_eye_Y_empty filelistCSV AOI_hit_perc percent_of_trial_with_trackloss
     
-
+    
 end %per subject file
 
 % figure(101); clf;
@@ -489,7 +504,6 @@ clr='rgcb';
 t=(1:10001)/120;
 cntr=0;
 
-keyboard
 
 for pictureNum=1:4
     for pxp=1:size(AllSub_ave_AOI_per_idiom,1)
